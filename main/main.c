@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <string.h>
 #include <inttypes.h>
 #include <math.h>
 #include "sdkconfig.h"
@@ -19,7 +18,7 @@
 #define MISO_PIN GPIO_NUM_21 // GPIO21 - MISO
 #define MOSI_PIN GPIO_NUM_19 // GPIO19 - MOSI (unused)
 
-#define NUM_SAMPLES 3000ULL
+#define NUM_SAMPLES 3000
 const double LSB_10V = 20.0 / 262144.0;
 const double I_FS_15AMP = LSB_10V * 15;
 
@@ -31,11 +30,10 @@ static int32_t adcData[NUM_SAMPLES][8]; // ADC values
 static double calcRms[8];
 static double calcPwr[8];
 
-uint32_t startSample = 0;
-uint32_t endSample = NUM_SAMPLES;
+int startSample = 1;
+int endSample = NUM_SAMPLES;
 
-
-static void setup_pin_input(uint32_t pin)
+static void setup_pin_input(int pin)
 {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << pin),
@@ -46,7 +44,7 @@ static void setup_pin_input(uint32_t pin)
     ESP_ERROR_CHECK(gpio_config(&io_conf));
 }
 
-static void setup_pin_output(uint32_t pin)
+static void setup_pin_output(int pin)
 {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << pin),
@@ -112,11 +110,11 @@ void app_main()
     }
 }
 
-static void calcRmsAndPower(uint32_t ch, uint32_t startSample, uint32_t endSample)
+static void calcRmsAndPower(int ch, int startSample, int endSample)
 {
     uint64_t sumRms = 0;
     int64_t sumPwr = 0;
-    for (uint32_t i = startSample; i < endSample; i++)
+    for (int i = startSample; i < endSample; i++)
     {
         int32_t val = adcData[i][ch];
         sumRms += val * val;
@@ -128,7 +126,7 @@ static void calcRmsAndPower(uint32_t ch, uint32_t startSample, uint32_t endSampl
     calcPwr[ch] = ((double)sumPwr) / ((double)numSamples);
 }
 
-static bool waitForBusy(uint32_t state, uint32_t timeoutMicros)
+static bool waitForBusy(int state, uint32_t timeoutMicros)
 {
     int64_t then = esp_timer_get_time();
     while (gpio_get_level(BUSY_PIN) != state)
@@ -177,18 +175,18 @@ void readAllChannels(spi_device_handle_t spi, int32_t *data)
 {
     doRead(spi);
 
-    for (uint32_t ch = 0; ch < 8; ch++)
+    for (int ch = 0; ch < 8; ch++)
     {
-        uint32_t startBit = ch * 18;
-        uint32_t startByte = startBit / 8;
+        int startBit = ch * 18;
+        int startByte = startBit / 8;
 
         uint32_t buf = 0;
-        for (uint32_t i = 0; i < 3; i++)
+        for (int i = 0; i < 3; i++)
         {
             buf = (buf << 8) | rawBytes[startByte + i];
         }
 
-        uint32_t shift = ((startByte + 3) * 8) - (startBit + 18);
+        int shift = ((startByte + 3) * 8) - (startBit + 18);
         uint32_t val = (uint32_t)((buf >> shift) & 0x3FFFF);
 
         if (val & 0x20000)
@@ -206,7 +204,7 @@ void printStored()
     printf("RMS1: %.6lf\n", calcRms[1] * LSB_10V);
     printf("PWR1: %.6lf\n", calcPwr[1]);
 
-    // for (uint32_t c = 0; c < NUM_SAMPLES; c++) {
+    // for (int c = 0; c < NUM_SAMPLES; c++) {
     //   printf("%ld\n", adcData[c][0]);
     // }
 
@@ -215,24 +213,23 @@ void printStored()
 
 void loop(spi_device_handle_t spi) {
     // Throw away the old conversion result (if any)
-    // doRead(spi);
+    doRead(spi);
 
-    for (uint32_t c = 0; c < NUM_SAMPLES; c++)
+    for (int c = 0; c < NUM_SAMPLES; c++)
     {
-        // readAllChannels(spi, adcData[c]);
+        readAllChannels(spi, adcData[c]);
     }
-
-    memset(adcData, 0, 3000*8 * 4);
 
     uint64_t start_time = esp_timer_get_time();
 
     bool dcTest = false; // set true for DC testing, false for AC
 
-    
+    startSample = 1;
+
     if (!dcTest)
     {
         bool sign = adcData[0][VOLTAGE_CH] >= 0;
-
+        // int startSample = 1;
         //  Advance `startSample` to the first sample which differs in sign from the literal zeroth sample (this has to be a zero crossing)
         while (((adcData[startSample][VOLTAGE_CH] >= 0) == sign) && startSample < NUM_SAMPLES)
         {
@@ -252,19 +249,17 @@ void loop(spi_device_handle_t spi) {
         // Serial.println("YO3");
         // Serial.flush();
 
-        uint32_t halfPeriods = 0;
-        uint32_t endSample = startSample;
+        int halfPeriods = 0;
+        endSample = startSample;
         bool endSign = adcData[endSample][VOLTAGE_CH] >= 0;
 
-        printf("%lu\n", startSample + 1);
-
         // Scan over all of the samples after `startSample` until the end
-        for (uint32_t currentSample = startSample + 1; ((uint32_t) currentSample) < NUM_SAMPLES; currentSample++)
+        for (int currentSample = startSample + 1; currentSample < NUM_SAMPLES; currentSample++)
         {
-            printf("%lu\n", currentSample);
-            printf("%llu\n", NUM_SAMPLES);
-            printf("%d\n\n", currentSample < NUM_SAMPLES);
-            fflush(stdout);
+            // printf("%d\n", currentSample);
+            // printf("%d\n", NUM_SAMPLES);
+            // printf("%d\n\n", currentSample < NUM_SAMPLES);
+            // fflush(stdout);
 
             bool currentSign = adcData[currentSample][VOLTAGE_CH] >= 0;
 
@@ -275,7 +270,7 @@ void loop(spi_device_handle_t spi) {
             // Serial.println(((uint32_t) 8841) < ((uint32_t) NUM_SAMPLES));
             // Serial.println(((uint32_t) 8841) < ((uint32_t) 2000));
 
-            // volatile uint32_t myValue = 8841;
+            // volatile int myValue = 8841;
             // myValue++;
             //  Serial.println("LLLLLLLLLLLLL");
             // Serial.println(((uint32_t) myValue) < ((uint32_t) NUM_SAMPLES));
@@ -291,7 +286,7 @@ void loop(spi_device_handle_t spi) {
             }
         }
         
-        printf("%ld\n", halfPeriods);
+        printf("%d\n", halfPeriods);
 
         if (!halfPeriods)
         {
@@ -301,7 +296,7 @@ void loop(spi_device_handle_t spi) {
 
         if (false && abs((halfPeriods * 134 *4) - (endSample - startSample)) > 50)
         { //(halfPeriods < 10 || halfPeriods >20) {
-            printf("half periods and range disagree! halfPeriods=%lu: %lu - %lu\n", halfPeriods, startSample, endSample);
+            printf("half periods and range disagree! halfPeriods=%d: %d - %d\n", halfPeriods, startSample, endSample);
             return;
         }
         
@@ -311,7 +306,7 @@ void loop(spi_device_handle_t spi) {
         printf("Code section took %llu microseconds (%llu milliseconds)\n", duration_us, duration_us / 1000);
     }
 
-    for (uint32_t ch = 0; ch < 8; ch++)
+    for (int ch = 0; ch < 8; ch++)
     {
         calcRmsAndPower(ch, startSample, endSample);
     }
