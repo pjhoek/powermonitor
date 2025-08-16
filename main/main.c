@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <math.h>
+#include <string.h>
 #include "sdkconfig.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -123,54 +124,54 @@ static void calcRmsAndPower(int ch, int startSample, int endSample)
     calcPwr[ch] = ((double)sumPwr) / ((double)numSamples);
 }
 
-static bool waitForBusy(int state, uint32_t timeoutMicros)
-{
-    int64_t then = esp_timer_get_time();
-    while (gpio_get_level(BUSY_PIN) != state)
-    {
-        if (esp_timer_get_time() - then > timeoutMicros)
-        {
-            // Timeout
-            return false;
-        }
-    }
+// static bool waitForBusy(int state, uint32_t timeoutMicros)
+// {
+//     int64_t then = esp_timer_get_time();
+//     while (gpio_get_level(BUSY_PIN) != state)
+//     {
+//         if (esp_timer_get_time() - then > timeoutMicros)
+//         {
+//             // Timeout
+//             return false;
+//         }
+//     }
 
-    // BUSY is now in state `state`
-    return true;
-}
+//     // BUSY is now in state `state`
+//     return true;
+// }
 
-static void doRead(spi_device_handle_t spi)
-{
-    if (!waitForBusy(0, 10 * 1000))
-    {
-        printf("low wait timeout\n");
-    }
+// static void doRead(spi_device_handle_t spi)
+// {
+//     if (!waitForBusy(0, 10 * 1000))
+//     {
+//         printf("low wait timeout\n");
+//     }
 
-    gpio_set_level(CONVST_PIN, 0);
-    uint32_t then = esp_cpu_get_cycle_count();
-    while (esp_cpu_get_cycle_count() - then < 10)
-        ;
-    gpio_set_level(CONVST_PIN, 1);
+//     gpio_set_level(CONVST_PIN, 0);
+//     uint32_t then = esp_cpu_get_cycle_count();
+//     while (esp_cpu_get_cycle_count() - then < 10)
+//         ;
+//     gpio_set_level(CONVST_PIN, 1);
 
-    if (!waitForBusy(1, 10))
-    {
-        printf("high wait timeout\n");
-    }
+//     if (!waitForBusy(1, 10))
+//     {
+//         printf("high wait timeout\n");
+//     }
 
-    gpio_set_level(CS_PIN, 0);
-    spi_transaction_t t = {
-        .length = 18 * 8,  // bits
-        .tx_buffer = NULL, // send nothing
-        .rx_buffer = rawBytes,
-        .flags = 0
-    };
-    ESP_ERROR_CHECK(spi_device_polling_transmit(spi, &t));
-    gpio_set_level(CS_PIN, 1);
-}
+//     gpio_set_level(CS_PIN, 0);
+//     spi_transaction_t t = {
+//         .length = 18 * 8,  // bits
+//         .tx_buffer = NULL, // send nothing
+//         .rx_buffer = rawBytes,
+//         .flags = 0
+//     };
+//     ESP_ERROR_CHECK(spi_device_polling_transmit(spi, &t));
+//     gpio_set_level(CS_PIN, 1);
+// }
 
 void readAllChannels(spi_device_handle_t spi, int32_t *data)
 {
-    doRead(spi);
+    // doRead(spi);
 
     for (int ch = 0; ch < 8; ch++)
     {
@@ -212,17 +213,10 @@ void loop(spi_device_handle_t spi) {
     // Serial.println("YO");
     uint64_t start_time = esp_timer_get_time();
     // Throw away the old conversion result (if any)
-    doRead(spi);
+    
+    
 
-    for (int c = 0; c < NUM_SAMPLES; c++)
-    {
-        readAllChannels(spi, adcData[c]);
-
-        // // Yield every 100 samples to reset watchdog
-        // if (c % 100 == 0) {
-        //     taskYIELD();
-        // }
-    }
+    memset(adcData, 0, 3000 * 8 * 4);
 
 
     bool dcTest = false; // set true for DC testing, false for AC
@@ -262,9 +256,9 @@ void loop(spi_device_handle_t spi) {
         {
             bool currentSign = adcData[currentSample][VOLTAGE_CH] >= 0;
 
-            // Serial.println((uint32_t) currentSample);
-            // Serial.println((uint32_t) NUM_SAMPLES);
-            // Serial.println(((uint32_t) currentSample) < ((uint32_t) NUM_SAMPLES));
+            printf("%lu\n", (uint32_t) currentSample);
+            printf("%lu\n", (uint32_t) NUM_SAMPLES);
+            printf("%d\n\n", ((uint32_t) currentSample) < ((uint32_t) NUM_SAMPLES));
             // Serial.println(((uint32_t) currentSample) < ((uint32_t) 2000));
             // Serial.println(((uint32_t) 8841) < ((uint32_t) NUM_SAMPLES));
             // Serial.println(((uint32_t) 8841) < ((uint32_t) 2000));
