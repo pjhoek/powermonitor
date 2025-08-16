@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <inttypes.h>
 #include <math.h>
 #include "sdkconfig.h"
@@ -30,7 +31,11 @@ static int32_t adcData[NUM_SAMPLES][8]; // ADC values
 static double calcRms[8];
 static double calcPwr[8];
 
-static void setup_pin_input(int pin)
+uint32_t startSample = 0;
+uint32_t endSample = NUM_SAMPLES;
+
+
+static void setup_pin_input(uint32_t pin)
 {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << pin),
@@ -41,7 +46,7 @@ static void setup_pin_input(int pin)
     ESP_ERROR_CHECK(gpio_config(&io_conf));
 }
 
-static void setup_pin_output(int pin)
+static void setup_pin_output(uint32_t pin)
 {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << pin),
@@ -107,11 +112,11 @@ void app_main()
     }
 }
 
-static void calcRmsAndPower(int ch, int startSample, int endSample)
+static void calcRmsAndPower(uint32_t ch, uint32_t startSample, uint32_t endSample)
 {
     uint64_t sumRms = 0;
     int64_t sumPwr = 0;
-    for (int i = startSample; i < endSample; i++)
+    for (uint32_t i = startSample; i < endSample; i++)
     {
         int32_t val = adcData[i][ch];
         sumRms += val * val;
@@ -123,7 +128,7 @@ static void calcRmsAndPower(int ch, int startSample, int endSample)
     calcPwr[ch] = ((double)sumPwr) / ((double)numSamples);
 }
 
-static bool waitForBusy(int state, uint32_t timeoutMicros)
+static bool waitForBusy(uint32_t state, uint32_t timeoutMicros)
 {
     int64_t then = esp_timer_get_time();
     while (gpio_get_level(BUSY_PIN) != state)
@@ -172,18 +177,18 @@ void readAllChannels(spi_device_handle_t spi, int32_t *data)
 {
     doRead(spi);
 
-    for (int ch = 0; ch < 8; ch++)
+    for (uint32_t ch = 0; ch < 8; ch++)
     {
-        int startBit = ch * 18;
-        int startByte = startBit / 8;
+        uint32_t startBit = ch * 18;
+        uint32_t startByte = startBit / 8;
 
         uint32_t buf = 0;
-        for (int i = 0; i < 3; i++)
+        for (uint32_t i = 0; i < 3; i++)
         {
             buf = (buf << 8) | rawBytes[startByte + i];
         }
 
-        int shift = ((startByte + 3) * 8) - (startBit + 18);
+        uint32_t shift = ((startByte + 3) * 8) - (startBit + 18);
         uint32_t val = (uint32_t)((buf >> shift) & 0x3FFFF);
 
         if (val & 0x20000)
@@ -201,7 +206,7 @@ void printStored()
     printf("RMS1: %.6lf\n", calcRms[1] * LSB_10V);
     printf("PWR1: %.6lf\n", calcPwr[1]);
 
-    // for (int c = 0; c < NUM_SAMPLES; c++) {
+    // for (uint32_t c = 0; c < NUM_SAMPLES; c++) {
     //   printf("%ld\n", adcData[c][0]);
     // }
 
@@ -210,20 +215,20 @@ void printStored()
 
 void loop(spi_device_handle_t spi) {
     // Throw away the old conversion result (if any)
-    doRead(spi);
+    // doRead(spi);
 
-    for (int c = 0; c < NUM_SAMPLES; c++)
+    for (uint32_t c = 0; c < NUM_SAMPLES; c++)
     {
-        readAllChannels(spi, adcData[c]);
+        // readAllChannels(spi, adcData[c]);
     }
+
+    memset(adcData, 0, 3000*8 * 4);
 
     uint64_t start_time = esp_timer_get_time();
 
     bool dcTest = false; // set true for DC testing, false for AC
 
-    int startSample = 0;
-    int endSample = NUM_SAMPLES;
-
+    
     if (!dcTest)
     {
         bool sign = adcData[0][VOLTAGE_CH] >= 0;
@@ -247,16 +252,16 @@ void loop(spi_device_handle_t spi) {
         // Serial.println("YO3");
         // Serial.flush();
 
-        int halfPeriods = 0;
-        int endSample = startSample;
+        uint32_t halfPeriods = 0;
+        uint32_t endSample = startSample;
         bool endSign = adcData[endSample][VOLTAGE_CH] >= 0;
 
-        printf("%d\n", startSample + 1);
+        printf("%lu\n", startSample + 1);
 
         // Scan over all of the samples after `startSample` until the end
-        for (int currentSample = startSample + 1; ((uint32_t) currentSample) < NUM_SAMPLES; currentSample++)
+        for (uint32_t currentSample = startSample + 1; ((uint32_t) currentSample) < NUM_SAMPLES; currentSample++)
         {
-            printf("%d\n", currentSample);
+            printf("%lu\n", currentSample);
             printf("%llu\n", NUM_SAMPLES);
             printf("%d\n\n", currentSample < NUM_SAMPLES);
             fflush(stdout);
@@ -270,7 +275,7 @@ void loop(spi_device_handle_t spi) {
             // Serial.println(((uint32_t) 8841) < ((uint32_t) NUM_SAMPLES));
             // Serial.println(((uint32_t) 8841) < ((uint32_t) 2000));
 
-            // volatile int myValue = 8841;
+            // volatile uint32_t myValue = 8841;
             // myValue++;
             //  Serial.println("LLLLLLLLLLLLL");
             // Serial.println(((uint32_t) myValue) < ((uint32_t) NUM_SAMPLES));
@@ -286,7 +291,7 @@ void loop(spi_device_handle_t spi) {
             }
         }
         
-        printf("%d\n", halfPeriods);
+        printf("%ld\n", halfPeriods);
 
         if (!halfPeriods)
         {
@@ -296,7 +301,7 @@ void loop(spi_device_handle_t spi) {
 
         if (false && abs((halfPeriods * 134 *4) - (endSample - startSample)) > 50)
         { //(halfPeriods < 10 || halfPeriods >20) {
-            printf("half periods and range disagree! halfPeriods=%d: %d - %d\n", halfPeriods, startSample, endSample);
+            printf("half periods and range disagree! halfPeriods=%lu: %lu - %lu\n", halfPeriods, startSample, endSample);
             return;
         }
         
@@ -306,7 +311,7 @@ void loop(spi_device_handle_t spi) {
         printf("Code section took %llu microseconds (%llu milliseconds)\n", duration_us, duration_us / 1000);
     }
 
-    for (int ch = 0; ch < 8; ch++)
+    for (uint32_t ch = 0; ch < 8; ch++)
     {
         calcRmsAndPower(ch, startSample, endSample);
     }
