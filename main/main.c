@@ -18,7 +18,7 @@
 #define MISO_PIN GPIO_NUM_21 // GPIO21 - MISO
 #define MOSI_PIN GPIO_NUM_19 // GPIO19 - MOSI (unused)
 
-#define NUM_SAMPLES 3000
+#define NUM_SAMPLES 3000ULL
 const double LSB_10V = 20.0 / 262144.0;
 const double I_FS_15AMP = LSB_10V * 15;
 
@@ -209,21 +209,15 @@ void printStored()
 }
 
 void loop(spi_device_handle_t spi) {
-    // Serial.println("YO");
-    uint64_t start_time = esp_timer_get_time();
     // Throw away the old conversion result (if any)
     doRead(spi);
 
     for (int c = 0; c < NUM_SAMPLES; c++)
     {
         readAllChannels(spi, adcData[c]);
-
-        // // Yield every 100 samples to reset watchdog
-        // if (c % 100 == 0) {
-        //     taskYIELD();
-        // }
     }
 
+    uint64_t start_time = esp_timer_get_time();
 
     bool dcTest = false; // set true for DC testing, false for AC
 
@@ -233,7 +227,7 @@ void loop(spi_device_handle_t spi) {
     if (!dcTest)
     {
         bool sign = adcData[0][VOLTAGE_CH] >= 0;
-        // int startSample = 1;
+
         //  Advance `startSample` to the first sample which differs in sign from the literal zeroth sample (this has to be a zero crossing)
         while (((adcData[startSample][VOLTAGE_CH] >= 0) == sign) && startSample < NUM_SAMPLES)
         {
@@ -257,9 +251,16 @@ void loop(spi_device_handle_t spi) {
         int endSample = startSample;
         bool endSign = adcData[endSample][VOLTAGE_CH] >= 0;
 
+        printf("%d\n", startSample + 1);
+
         // Scan over all of the samples after `startSample` until the end
-        for (int currentSample = startSample + 1; currentSample < NUM_SAMPLES; currentSample++)
+        for (int currentSample = startSample + 1; ((uint32_t) currentSample) < NUM_SAMPLES; currentSample++)
         {
+            printf("%d\n", currentSample);
+            printf("%llu\n", NUM_SAMPLES);
+            printf("%d\n\n", currentSample < NUM_SAMPLES);
+            fflush(stdout);
+
             bool currentSign = adcData[currentSample][VOLTAGE_CH] >= 0;
 
             // Serial.println((uint32_t) currentSample);
@@ -284,8 +285,8 @@ void loop(spi_device_handle_t spi) {
                 halfPeriods++;
             }
         }
-        // Serial.println(halfPeriods);
-        // Serial.flush();
+        
+        printf("%d\n", halfPeriods);
 
         if (!halfPeriods)
         {
