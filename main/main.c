@@ -196,18 +196,18 @@ void readAllChannels(spi_device_handle_t spi, int32_t *data)
     }
 }
 
-void printStored()
-{
-    printf("RMS: %.6lf\n", calcRms[0] * LSB_10V);
-    printf("RMS1: %.6lf\n", calcRms[1] * LSB_10V);
-    printf("PWR1: %.6lf\n", calcPwr[1]);
+// void printStored()
+// {
+//     printf("RMS: %.6lf\n", calcRms[0] * LSB_10V);
+//     printf("RMS1: %.6lf\n", calcRms[1] * LSB_10V);
+//     printf("PWR1: %.6lf\n", calcPwr[1]);
 
-    // for (int c = 0; c < NUM_SAMPLES; c++) {
-    //   printf("%ld\n", adcData[c][0]);
-    // }
+//     // for (int c = 0; c < NUM_SAMPLES; c++) {
+//     //   printf("%ld\n", adcData[c][0]);
+//     // }
 
-    printf("---------------------------------------------------------------------------------------------------------------------------------\n");
-}
+//     printf("---------------------------------------------------------------------------------------------------------------------------------\n");
+// }
 
 void loop(spi_device_handle_t spi) {
     // Serial.println("YO");
@@ -271,39 +271,39 @@ void loop(spi_device_handle_t spi) {
 
             // If the current sample now has a different sign to the last saved "end sample", updated
             // the saved "end sample" to this position (we have just found another zero crossing).
-            if (currentSign != endSign)
-            {
-                endSample = currentSample;
-                endSign = currentSign;
-                halfPeriods++;
-            }
+            // if (currentSign != endSign)
+            // {
+            //     endSample = currentSample;
+            //     endSign = currentSign;
+            //     halfPeriods++;
+            // }
         }
         // Serial.println(halfPeriods);
         // Serial.flush();
 
-        if (!halfPeriods)
-        {
-            printf("didn't find any half periods!?!\n");
-            return;
-        }
+        // if (!halfPeriods)
+        // {
+        //     printf("didn't find any half periods!?!\n");
+        //     return;
+        // }
 
-        if (false && abs((halfPeriods * 134 *4) - (endSample - startSample)) > 50)
-        { //(halfPeriods < 10 || halfPeriods >20) {
-            printf("half periods and range disagree! halfPeriods=%d: %d - %d\n", halfPeriods, startSample, endSample);
-            return;
-        }
+        // if (false && abs((halfPeriods * 134 *4) - (endSample - startSample)) > 50)
+        // { //(halfPeriods < 10 || halfPeriods >20) {
+        //     printf("half periods and range disagree! halfPeriods=%d: %d - %d\n", halfPeriods, startSample, endSample);
+        //     return;
+        // }
         
-        // printf("halfPeriods=%d: %d = %d - %d\n", halfPeriods, endSample - startSample, startSample, endSample);
-        uint64_t end_time = esp_timer_get_time();
-        uint64_t duration_us = end_time - start_time;
-        printf("Code section took %llu microseconds (%llu milliseconds)\n", duration_us, duration_us / 1000);
+        // // printf("halfPeriods=%d: %d = %d - %d\n", halfPeriods, endSample - startSample, startSample, endSample);
+        // uint64_t end_time = esp_timer_get_time();
+        // uint64_t duration_us = end_time - start_time;
+        // printf("Code section took %llu microseconds (%llu milliseconds)\n", duration_us, duration_us / 1000);
     }
 
-    for (int ch = 0; ch < 8; ch++)
-    {
-        calcRmsAndPower(ch, startSample, endSample);
-    }
+    // for (int ch = 0; ch < 8; ch++)
+    // {
+    //     calcRmsAndPower(ch, startSample, endSample);
+    // }
 
-    printStored();
+    // printStored();
 }
 
