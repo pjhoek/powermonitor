@@ -30,9 +30,6 @@ static int32_t adcData[NUM_SAMPLES][8]; // ADC values
 static double calcRms[8];
 static double calcPwr[8];
 
-int startSample = 1;
-int endSample = NUM_SAMPLES;
-
 static void setup_pin_input(int pin)
 {
     gpio_config_t io_conf = {
@@ -55,7 +52,7 @@ static void setup_pin_output(int pin)
     ESP_ERROR_CHECK(gpio_config(&io_conf));
 }
 
-void loop(spi_device_handle_t spi);
+static void loop(spi_device_handle_t spi);
 
 void app_main()
 {
@@ -92,9 +89,8 @@ void app_main()
     spi_device_interface_config_t devcfg = {
         .clock_speed_hz = 25 * 1000 * 1000, // 25 MHz
         .mode = 1,                          // SPI_MODE2
-        .spics_io_num = -1, //CS_PIN,         // Hardware CS
-        .queue_size = 1
-    };
+        .spics_io_num = -1,                 // CS_PIN,         // Hardware CS
+        .queue_size = 1};
 
     spi_device_handle_t spi;
     ESP_ERROR_CHECK(spi_bus_add_device(HSPI_HOST, &devcfg, &spi));
@@ -102,9 +98,9 @@ void app_main()
     while (true)
     {
         loop(spi);
-        
+
         // FIXME
-        
+
         vTaskDelay(1);
         // taskYIELD();
     }
@@ -165,13 +161,12 @@ static void doRead(spi_device_handle_t spi)
         .length = 18 * 8,  // bits
         .tx_buffer = NULL, // send nothing
         .rx_buffer = rawBytes,
-        .flags = 0
-    };
+        .flags = 0};
     ESP_ERROR_CHECK(spi_device_polling_transmit(spi, &t));
     gpio_set_level(CS_PIN, 1);
 }
 
-void readAllChannels(spi_device_handle_t spi, int32_t *data)
+static void readAllChannels(spi_device_handle_t spi, int32_t *data)
 {
     doRead(spi);
 
@@ -198,7 +193,7 @@ void readAllChannels(spi_device_handle_t spi, int32_t *data)
     }
 }
 
-void printStored()
+static void printStored()
 {
     printf("RMS: %.6lf\n", calcRms[0] * LSB_10V);
     printf("RMS1: %.6lf\n", calcRms[1] * LSB_10V);
@@ -211,7 +206,76 @@ void printStored()
     printf("---------------------------------------------------------------------------------------------------------------------------------\n");
 }
 
-void loop(spi_device_handle_t spi) {
+// set true for DC testing, false for AC
+#define DC_MODE 0
+
+static bool findEndpoints(int *outStartSample, int *outEndSample)
+{
+    if (DC_MODE)
+    {
+        *outStartSample = 0;
+        *outEndSample = NUM_SAMPLES - 1;
+        return true;
+    }
+
+    int startSample = 1;
+
+    bool sign = adcData[0][VOLTAGE_CH] >= 0;
+
+    //  Advance `startSample` to the first sample which differs in sign from the literal zeroth sample (this has to be a zero crossing)
+    while (((adcData[startSample][VOLTAGE_CH] >= 0) == sign) && startSample < NUM_SAMPLES)
+    {
+        startSample++;
+    }
+
+    if (startSample == NUM_SAMPLES)
+    {
+        printf("sample overflow finding zero crossing\n");
+        return false;
+    }
+
+    int halfPeriods = 0;
+    int endSample = startSample;
+    bool endSign = adcData[endSample][VOLTAGE_CH] >= 0;
+
+    // Scan over all of the samples after `startSample` until the end
+    for (int currentSample = startSample + 1; currentSample < NUM_SAMPLES; currentSample++)
+    {
+        bool currentSign = adcData[currentSample][VOLTAGE_CH] >= 0;
+
+        // If the current sample now has a different sign to the last saved "end sample", updated
+        // the saved "end sample" to this position (we have just found another zero crossing).
+        if (currentSign != endSign)
+        {
+            endSample = currentSample;
+            endSign = currentSign;
+            halfPeriods++;
+        }
+    }
+
+    printf("%d\n", halfPeriods);
+
+    if (!halfPeriods)
+    {
+        printf("didn't find any half periods!?!\n");
+        return false;
+    }
+
+    // FIXME RENABLE
+    if (false && abs((halfPeriods * 134 * 4) - (endSample - startSample)) > 50)
+    { //(halfPeriods < 10 || halfPeriods >20) {
+        printf("half periods and range disagree! halfPeriods=%d: %d - %d\n", halfPeriods, startSample, endSample);
+        return false;
+    }
+
+    printf("halfPeriods=%d: %d = %d - %d\n", halfPeriods, endSample - startSample, startSample, endSample);
+    *outStartSample = startSample;
+    *outEndSample = endSample;
+    return true;
+}
+
+static void loop(spi_device_handle_t spi)
+{
     // Throw away the old conversion result (if any)
     doRead(spi);
 
@@ -222,89 +286,14 @@ void loop(spi_device_handle_t spi) {
 
     uint64_t start_time = esp_timer_get_time();
 
-    bool dcTest = false; // set true for DC testing, false for AC
-
-    startSample = 1;
-
-    if (!dcTest)
-    {
-        bool sign = adcData[0][VOLTAGE_CH] >= 0;
-        // int startSample = 1;
-        //  Advance `startSample` to the first sample which differs in sign from the literal zeroth sample (this has to be a zero crossing)
-        while (((adcData[startSample][VOLTAGE_CH] >= 0) == sign) && startSample < NUM_SAMPLES)
-        {
-            startSample++;
-            // Serial.println(startSample);
-            // Serial.println(NUM_SAMPLES);
-            // Serial.println(((uint32_t) startSample) < ((uint32_t) NUM_SAMPLES));
-        }
-        //  Serial.println("YO2");
-        // Serial.println(startSample);
-
-        if (startSample == NUM_SAMPLES)
-        {
-            printf("sample overflow finding zero crossing\n");
-            return;
-        }
-        // Serial.println("YO3");
-        // Serial.flush();
-
-        int halfPeriods = 0;
-        endSample = startSample;
-        bool endSign = adcData[endSample][VOLTAGE_CH] >= 0;
-
-        // Scan over all of the samples after `startSample` until the end
-        for (int currentSample = startSample + 1; currentSample < NUM_SAMPLES; currentSample++)
-        {
-            // printf("%d\n", currentSample);
-            // printf("%d\n", NUM_SAMPLES);
-            // printf("%d\n\n", currentSample < NUM_SAMPLES);
-            // fflush(stdout);
-
-            bool currentSign = adcData[currentSample][VOLTAGE_CH] >= 0;
-
-            // Serial.println((uint32_t) currentSample);
-            // Serial.println((uint32_t) NUM_SAMPLES);
-            // Serial.println(((uint32_t) currentSample) < ((uint32_t) NUM_SAMPLES));
-            // Serial.println(((uint32_t) currentSample) < ((uint32_t) 2000));
-            // Serial.println(((uint32_t) 8841) < ((uint32_t) NUM_SAMPLES));
-            // Serial.println(((uint32_t) 8841) < ((uint32_t) 2000));
-
-            // volatile int myValue = 8841;
-            // myValue++;
-            //  Serial.println("LLLLLLLLLLLLL");
-            // Serial.println(((uint32_t) myValue) < ((uint32_t) NUM_SAMPLES));
-            // Serial.println(((uint32_t) myValue) < ((uint32_t) 2000));
-
-            // If the current sample now has a different sign to the last saved "end sample", updated
-            // the saved "end sample" to this position (we have just found another zero crossing).
-            if (currentSign != endSign)
-            {
-                endSample = currentSample;
-                endSign = currentSign;
-                halfPeriods++;
-            }
-        }
-        
-        printf("%d\n", halfPeriods);
-
-        if (!halfPeriods)
-        {
-            printf("didn't find any half periods!?!\n");
-            return;
-        }
-
-        if (false && abs((halfPeriods * 134 *4) - (endSample - startSample)) > 50)
-        { //(halfPeriods < 10 || halfPeriods >20) {
-            printf("half periods and range disagree! halfPeriods=%d: %d - %d\n", halfPeriods, startSample, endSample);
-            return;
-        }
-        
-        // printf("halfPeriods=%d: %d = %d - %d\n", halfPeriods, endSample - startSample, startSample, endSample);
-        uint64_t end_time = esp_timer_get_time();
-        uint64_t duration_us = end_time - start_time;
-        printf("Code section took %llu microseconds (%llu milliseconds)\n", duration_us, duration_us / 1000);
+    int startSample, endSample;
+    if (!findEndpoints(&startSample, &endSample)) {
+        return;
     }
+
+    uint64_t end_time = esp_timer_get_time();
+    uint64_t duration_us = end_time - start_time;
+    printf("Code section took %llu microseconds (%llu milliseconds)\n", duration_us, duration_us / 1000);
 
     for (int ch = 0; ch < 8; ch++)
     {
@@ -313,4 +302,3 @@ void loop(spi_device_handle_t spi) {
 
     printStored();
 }
-
